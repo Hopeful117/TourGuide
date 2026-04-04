@@ -11,6 +11,9 @@ import gpsUtil.location.VisitedLocation;
 import rewardCentral.RewardCentral;
 import com.openclassrooms.tourguide.user.User;
 import com.openclassrooms.tourguide.user.UserReward;
+import java.util.ArrayList;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 public class RewardsService {
@@ -35,17 +38,28 @@ public class RewardsService {
 	public void setDefaultProximityBuffer() {
 		proximityBuffer = defaultProximityBuffer;
 	}
-	
+	// This method is called when a user gets a new location, and it checks if the user is near any attractions. If the user is near an attraction and has not already received a reward for that attraction, it adds a new reward to the user's rewards list.
+    //Fixed ConcurrentModificationException by creating a copy of the user's visited locations and attractions lists, and by using a Set to track rewarded attractions for faster lookups.
+    //Using Snapshot of User's visited locations and attractions to avoid ConcurrentModificationException, and using a Set to track rewarded attractions for efficient lookups.
+    //The reward points are not being added to the user's rewards list because the getRewardPoints method is not being called correctly in the calculateRewards method.
+    //Fixed by changing the condition in User's addUserReward method to check if there is already a reward for the attraction, and if so, it should not add a new reward to the user's rewards list.
+
+
+
 	public void calculateRewards(User user) {
-		List<VisitedLocation> userLocations = user.getVisitedLocations();
-		List<Attraction> attractions = gpsUtil.getAttractions();
+		List<VisitedLocation> userLocations = new ArrayList<>( user.getVisitedLocations());
+		List<Attraction> attractions = new ArrayList<> (gpsUtil.getAttractions());
+        Set<String> rewardedAttractions = user.getUserRewards().stream()
+                .map(reward -> reward.attraction.attractionName)
+                .collect(Collectors.toSet());
 		
 		for(VisitedLocation visitedLocation : userLocations) {
 			for(Attraction attraction : attractions) {
-				if(user.getUserRewards().stream().filter(r -> r.attraction.attractionName.equals(attraction.attractionName)).count() == 0) {
-					if(nearAttraction(visitedLocation, attraction)) {
+				//if(user.getUserRewards().stream().filter(r -> r.attraction.attractionName.equals(attraction.attractionName)).count() == 0) {
+				if(!rewardedAttractions.contains(attraction.attractionName) && nearAttraction(visitedLocation, attraction)) {
+
 						user.addUserReward(new UserReward(visitedLocation, attraction, getRewardPoints(attraction, user)));
-					}
+					    rewardedAttractions.add(attraction.attractionName);
 				}
 			}
 		}
@@ -70,11 +84,11 @@ public class RewardsService {
         double lon2 = Math.toRadians(loc2.longitude);
 
         double angle = Math.acos(Math.sin(lat1) * Math.sin(lat2)
-                               + Math.cos(lat1) * Math.cos(lat2) * Math.cos(lon1 - lon2));
+                + Math.cos(lat1) * Math.cos(lat2) * Math.cos(lon1 - lon2));
 
         double nauticalMiles = 60 * Math.toDegrees(angle);
         double statuteMiles = STATUTE_MILES_PER_NAUTICAL_MILE * nauticalMiles;
         return statuteMiles;
-	}
+    }
 
 }
