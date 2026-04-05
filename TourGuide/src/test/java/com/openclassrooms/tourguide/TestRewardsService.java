@@ -1,24 +1,22 @@
 package com.openclassrooms.tourguide;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
-import java.util.Date;
-import java.util.List;
-import java.util.UUID;
-
-import org.junit.jupiter.api.Disabled;
-import org.junit.jupiter.api.Test;
-
-import gpsUtil.GpsUtil;
-import gpsUtil.location.Attraction;
-import gpsUtil.location.VisitedLocation;
-import rewardCentral.RewardCentral;
 import com.openclassrooms.tourguide.helper.InternalTestHelper;
 import com.openclassrooms.tourguide.service.RewardsService;
 import com.openclassrooms.tourguide.service.TourGuideService;
 import com.openclassrooms.tourguide.user.User;
 import com.openclassrooms.tourguide.user.UserReward;
+import gpsUtil.GpsUtil;
+import gpsUtil.location.Attraction;
+import gpsUtil.location.VisitedLocation;
+import org.junit.jupiter.api.Test;
+import rewardCentral.RewardCentral;
+
+import java.util.Date;
+import java.util.List;
+import java.util.UUID;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class TestRewardsService {
 
@@ -36,7 +34,7 @@ public class TestRewardsService {
         tourGuideService.trackUserLocation(user);
         List<UserReward> userRewards = user.getUserRewards();
         tourGuideService.tracker.stopTracking();
-        assertTrue(userRewards.size() == 1);
+        assertEquals(1, userRewards.size());
     }
 
     @Test
@@ -49,7 +47,7 @@ public class TestRewardsService {
 
     //Fixed the concurrent modification exception by creating a snapshot of the user's visited locations and attractions, and by using a Set to track rewarded attractions for efficient lookups.
     //The test still fails because the reward points are not being added to the user's rewards list, which is likely due to a bug in the calculateRewards method.
-
+    //Fixed the issue by debugging the AddUserReward logic in User class and ensuring that the reward points are correctly calculated and added to the user's rewards list. The test now passes successfully.
     @Test
     public void nearAllAttractions() {
         GpsUtil gpsUtil = new GpsUtil();

@@ -1,34 +1,24 @@
 package com.openclassrooms.tourguide.service;
 
+import com.openclassrooms.tourguide.dto.NearbyAttractionDTO;
 import com.openclassrooms.tourguide.helper.InternalTestHelper;
 import com.openclassrooms.tourguide.tracker.Tracker;
 import com.openclassrooms.tourguide.user.User;
 import com.openclassrooms.tourguide.user.UserReward;
-
-import java.time.LocalDateTime;
-import java.time.ZoneOffset;
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Random;
-import java.util.UUID;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Service;
-
 import gpsUtil.GpsUtil;
 import gpsUtil.location.Attraction;
 import gpsUtil.location.Location;
 import gpsUtil.location.VisitedLocation;
-
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
 import tripPricer.Provider;
 import tripPricer.TripPricer;
+
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
+import java.util.*;
+import java.util.stream.IntStream;
 
 @Service
 public class TourGuideService {
@@ -69,9 +59,8 @@ public class TourGuideService {
     }
 
     public VisitedLocation getUserLocation(User user) {
-        VisitedLocation visitedLocation = (user.getVisitedLocations().size() > 0) ? user.getLastVisitedLocation()
+        return (!user.getVisitedLocations().isEmpty()) ? user.getLastVisitedLocation()
                 : trackUserLocation(user);
-        return visitedLocation;
     }
 
     public User getUser(String userName) {
@@ -79,7 +68,7 @@ public class TourGuideService {
     }
 
     public List<User> getAllUsers() {
-        return internalUserMap.values().stream().collect(Collectors.toList());
+        return new ArrayList<>(internalUserMap.values());
     }
 
     public void addUser(User user) {
@@ -89,7 +78,7 @@ public class TourGuideService {
     }
 
     public List<Provider> getTripDeals(User user) {
-        int cumulatativeRewardPoints = user.getUserRewards().stream().mapToInt(i -> i.getRewardPoints()).sum();
+        int cumulatativeRewardPoints = user.getUserRewards().stream().mapToInt(UserReward::getRewardPoints).sum();
         List<Provider> providers = tripPricer.getPrice(tripPricerApiKey, user.getUserId(),
                 user.getUserPreferences().getNumberOfAdults(), user.getUserPreferences().getNumberOfChildren(),
                 user.getUserPreferences().getTripDuration(), cumulatativeRewardPoints);
@@ -104,13 +93,21 @@ public class TourGuideService {
         return visitedLocation;
     }
 
-    public List<Attraction> getNearByAttractions(VisitedLocation visitedLocation) {
-        List<Attraction> nearbyAttractions = new ArrayList<>();
-        for (Attraction attraction : gpsUtil.getAttractions()) {
-            if (rewardsService.isWithinAttractionProximity(attraction, visitedLocation.location)) {
-                nearbyAttractions.add(attraction);
-            }
-        }
+    //Changed method to return a list of NearbyAttractionDTO instead of a list of Attraction, and added distance and reward points to the DTO
+    // The method now sorts the attractions by distance to the user's location and limits the results to the 5 closest attractions
+    //Moved the logic here from the RewardsService to calculate the distance and reward points for each attraction and add them to the DTO
+    public List<NearbyAttractionDTO> getNearByAttractions(VisitedLocation visitedLocation) {
+        List<NearbyAttractionDTO> nearbyAttractions = new ArrayList<>();
+        List<Attraction> attractions = gpsUtil.getAttractions().stream().sorted((a1, a2) -> Double.compare(rewardsService.getDistance(visitedLocation.location, a1),
+                        rewardsService.getDistance(visitedLocation.location, a2)))
+                .limit(5)
+                .toList();
+        attractions.forEach(attraction -> {
+            double distanceInMiles = rewardsService.getDistance(visitedLocation.location, attraction);
+            int rewardPoints = rewardsService.getRewardPoints(attraction, visitedLocation.userId);
+            nearbyAttractions.add(new NearbyAttractionDTO(attraction.attractionName, attraction.latitude, attraction.longitude,
+                    visitedLocation.location.latitude, visitedLocation.location.longitude, distanceInMiles, rewardPoints));
+        });
 
         return nearbyAttractions;
     }

@@ -1,12 +1,12 @@
 package com.openclassrooms.tourguide.user;
 
+import gpsUtil.location.VisitedLocation;
+import tripPricer.Provider;
+
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
-
-import gpsUtil.location.VisitedLocation;
-import tripPricer.Provider;
 
 public class User {
     private final UUID userId;
@@ -69,12 +69,13 @@ public class User {
     public void clearVisitedLocations() {
         visitedLocations.clear();
     }
-//The issue seems to be the if condition that checks if the user has already received a reward for the attraction.
+
+    //The issue seems to be the if condition that checks if the user has already received a reward for the attraction.
 // The condition is currently checking if there are no rewards for the attraction, but it should be checking if there is already a reward for the attraction.
 // This can be fixed by changing the condition to check if there is already a reward for the attraction, and if so, it should not add a new reward to the user's rewards list.
     public void addUserReward(UserReward userReward) {
-       // if (userRewards.stream().filter(r -> !r.attraction.attractionName.equals(userReward.attraction)).count() == 0) {
-        if(userRewards.stream().filter(reward -> reward.attraction.attractionName.equals(userReward.attraction.attractionName)).count() == 0) {
+        // if (userRewards.stream().filter(r -> !r.attraction.attractionName.equals(userReward.attraction)).count() == 0) {
+        if (userRewards.stream().filter(reward -> reward.attraction.attractionName.equals(userReward.attraction.attractionName)).count() == 0) {
             userRewards.add(userReward);
         }
     }
