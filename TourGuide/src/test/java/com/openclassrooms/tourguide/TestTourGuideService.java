@@ -30,7 +30,7 @@ public class TestTourGuideService {
         User user = new User(UUID.randomUUID(), "jon", "000", "jon@tourGuide.com");
         VisitedLocation visitedLocation = tourGuideService.trackUserLocation(user);
         tourGuideService.tracker.stopTracking();
-        assertTrue(visitedLocation.userId.equals(user.getUserId()));
+        assertEquals(visitedLocation.userId, user.getUserId());
     }
 
     @Test

@@ -35,7 +35,7 @@ public class RewardsService {
     public void setDefaultProximityBuffer() {
         proximityBuffer = defaultProximityBuffer;
     }
-    // This method is called when a user gets a new location, and it checks if the user is near any attractions. If the user is near an attraction and has not already received a reward for that attraction, it adds a new reward to the user's rewards list.
+    //This method is called when a user gets a new location, and it checks if the user is near any attractions. If the user is near an attraction and has not already received a reward for that attraction, it adds a new reward to the user's rewards list.
     //Using Snapshot of User's visited locations and attractions to avoid ConcurrentModificationException, and using a Set to track rewarded attractions for efficient lookups.
     //The reward points are not being added to the user's rewards list because the getRewardPoints method is not being called correctly in the calculateRewards method.
     //Fixed by changing the condition in User's addUserReward method to check if there is already a reward for the attraction, and if so, it should not add a new reward to the user's rewards list.

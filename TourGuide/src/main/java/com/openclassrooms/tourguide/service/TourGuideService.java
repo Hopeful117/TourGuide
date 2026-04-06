@@ -9,6 +9,7 @@ import gpsUtil.GpsUtil;
 import gpsUtil.location.Attraction;
 import gpsUtil.location.Location;
 import gpsUtil.location.VisitedLocation;
+import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -21,6 +22,7 @@ import java.util.*;
 import java.util.stream.IntStream;
 
 @Service
+@Slf4j
 public class TourGuideService {
     /**********************************************************************************
      *
@@ -36,7 +38,7 @@ public class TourGuideService {
     // internal users are provided and stored in memory
     private final Map<String, User> internalUserMap = new HashMap<>();
     boolean testMode = true;
-    private Logger logger = LoggerFactory.getLogger(TourGuideService.class);
+
 
     public TourGuideService(GpsUtil gpsUtil, RewardsService rewardsService) {
         this.gpsUtil = gpsUtil;
@@ -45,10 +47,10 @@ public class TourGuideService {
         Locale.setDefault(Locale.US);
 
         if (testMode) {
-            logger.info("TestMode enabled");
-            logger.debug("Initializing users");
+            log.info("TestMode enabled");
+            log.debug("Initializing users");
             initializeInternalUsers();
-            logger.debug("Finished initializing users");
+            log.debug("Finished initializing users");
         }
         tracker = new Tracker(this);
         addShutDownHook();
@@ -130,7 +132,7 @@ public class TourGuideService {
 
             internalUserMap.put(userName, user);
         });
-        logger.debug("Created " + InternalTestHelper.getInternalUserNumber() + " internal test users.");
+        log.debug("Created {} internal test users.", InternalTestHelper.getInternalUserNumber());
     }
 
     private void generateUserLocationHistory(User user) {
