@@ -10,22 +10,30 @@ import lombok.Setter;
 import org.springframework.stereotype.Service;
 import rewardCentral.RewardCentral;
 
-import java.util.List;
-import java.util.Set;
-import java.util.UUID;
-import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 
 @Service
 public class RewardsService {
     private static final double STATUTE_MILES_PER_NAUTICAL_MILE = 1.15077945;
+    private static final long ATTRACTIONS_CACHE_TTL_MILLIS = 60_000;
 
     // proximity in miles
     private final int defaultProximityBuffer = 10;
     private final GpsUtil gpsUtil;
     private final RewardCentral rewardsCentral;
+    private final Object attractionsCacheLock = new Object();
+    private volatile List<Attraction> attractionsCache = List.of();
+    private volatile long attractionsCacheExpiresAt = 0L;
     @Setter
     private int proximityBuffer = defaultProximityBuffer;
+
+    private final ExecutorService rewardsExecutor = Executors.newFixedThreadPool(
+            Math.max(4, Runtime.getRuntime().availableProcessors() * 2)
+    );
 
     public RewardsService(GpsUtil gpsUtil, RewardCentral rewardCentral) {
         this.gpsUtil = gpsUtil;
@@ -42,22 +50,54 @@ public class RewardsService {
 
 
     public void calculateRewards(User user) {
-        List<VisitedLocation> userLocations = new CopyOnWriteArrayList<>(user.getVisitedLocations());
-        List<Attraction> attractions = new CopyOnWriteArrayList<>(gpsUtil.getAttractions());
-        Set<String> rewardedAttractions = user.getUserRewards().stream()
-                .map(reward -> reward.attraction.attractionName)
-                .collect(Collectors.toSet());
+        List<VisitedLocation> userLocations;
+        Set<String> rewardedAttractions;
 
-        for (VisitedLocation visitedLocation : userLocations) {
-            for (Attraction attraction : attractions) {
-                //if(user.getUserRewards().stream().filter(r -> r.attraction.attractionName.equals(attraction.attractionName)).count() == 0) {
-                if (!rewardedAttractions.contains(attraction.attractionName) && nearAttraction(visitedLocation, attraction)) {
-
-                    user.addUserReward(new UserReward(visitedLocation, attraction, getRewardPoints(attraction, user.getUserId())));
-                    rewardedAttractions.add(attraction.attractionName);
-                }
-            }
+        // Snapshot atomique de l'etat utilisateur pour eviter les races.
+        synchronized (user) {
+            userLocations = new ArrayList<>(user.getVisitedLocations());
+            rewardedAttractions = user.getUserRewards().stream()
+                    .map(reward -> reward.attraction.attractionName)
+                    .collect(Collectors.toSet());
         }
+
+        if (userLocations.isEmpty()) {
+            return;
+        }
+
+        List<Attraction> attractions = getCachedAttractions();
+        List<UserReward> newRewards = new ArrayList<>();
+        Set<String> attractionNamesToReward = new HashSet<>(rewardedAttractions);
+
+
+        userLocations.parallelStream().filter(visitedLocation -> attractions.parallelStream().anyMatch(attraction ->
+                !attractionNamesToReward.contains(attraction.attractionName) && nearAttraction(visitedLocation, attraction)))
+                .forEach(visitedLocation -> attractions.parallelStream().filter(attraction ->
+                        !attractionNamesToReward.contains(attraction.attractionName) && nearAttraction(visitedLocation, attraction))
+                        .forEach(attraction -> {
+                            int points = getRewardPoints(attraction, user.getUserId());
+                            newRewards.add(new UserReward(visitedLocation, attraction, points));
+                            attractionNamesToReward.add(attraction.attractionName);
+                        }));
+
+        synchronized (user) {
+            newRewards.forEach(user::addUserReward);
+        }
+    }
+
+    public CompletableFuture<Void> calculateRewardsAsync(User user) {
+        return CompletableFuture.runAsync(() -> calculateRewards(user), rewardsExecutor);
+    }
+
+    public CompletableFuture<Void> calculateRewardsForUsersAsync(List<User> users) {
+        List<CompletableFuture<Void>> futures = users.stream()
+                .map(this::calculateRewardsAsync)
+                .toList();
+        return CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
+    }
+
+    public void shutdown() {
+        rewardsExecutor.shutdownNow();
     }
 
     public boolean isWithinAttractionProximity(Attraction attraction, Location location) {
@@ -71,6 +111,23 @@ public class RewardsService {
 
     int getRewardPoints(Attraction attraction, UUID user) {
         return rewardsCentral.getAttractionRewardPoints(attraction.attractionId, user);
+    }
+
+    private List<Attraction> getCachedAttractions() {
+        long now = System.currentTimeMillis();
+        List<Attraction> snapshot = attractionsCache;
+        if (!snapshot.isEmpty() && now < attractionsCacheExpiresAt) {
+            return snapshot;
+        }
+
+        synchronized (attractionsCacheLock) {
+            now = System.currentTimeMillis();
+            if (attractionsCache.isEmpty() || now >= attractionsCacheExpiresAt) {
+                attractionsCache = List.copyOf(Objects.requireNonNull(gpsUtil.getAttractions()));
+                attractionsCacheExpiresAt = now + ATTRACTIONS_CACHE_TTL_MILLIS;
+            }
+            return attractionsCache;
+        }
     }
 
     public double getDistance(Location loc1, Location loc2) {

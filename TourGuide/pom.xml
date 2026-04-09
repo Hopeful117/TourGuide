@@ -51,18 +51,24 @@
             <groupId>gpsUtil</groupId>
             <artifactId>gpsUtil</artifactId>
             <version>1.0.0</version>
+            <scope>system</scope>
+            <systemPath>${project.basedir}/libs/gpsUtil.jar</systemPath>
         </dependency>
 
         <dependency>
             <groupId>tripPricer</groupId>
             <artifactId>tripPricer</artifactId>
             <version>1.0.0</version>
+            <scope>system</scope>
+            <systemPath>${project.basedir}/libs/TripPricer.jar</systemPath>
         </dependency>
 
         <dependency>
             <groupId>rewardCentral</groupId>
             <artifactId>rewardCentral</artifactId>
             <version>1.0.0</version>
+            <scope>system</scope>
+            <systemPath>${project.basedir}/libs/RewardCentral.jar</systemPath>
         </dependency>
         <dependency>
             <groupId>org.projectlombok</groupId>

@@ -10,8 +10,6 @@ import gpsUtil.location.Attraction;
 import gpsUtil.location.Location;
 import gpsUtil.location.VisitedLocation;
 import lombok.extern.slf4j.Slf4j;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import tripPricer.Provider;
 import tripPricer.TripPricer;
@@ -19,6 +17,7 @@ import tripPricer.TripPricer;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.*;
+import java.util.concurrent.*;
 import java.util.stream.IntStream;
 
 @Service
@@ -30,14 +29,21 @@ public class TourGuideService {
      *
      **********************************************************************************/
     private static final String tripPricerApiKey = "test-server-api-key";
+    private static final long ATTRACTIONS_CACHE_TTL_MILLIS = 60_000;
     public final Tracker tracker;
     private final GpsUtil gpsUtil;
     private final RewardsService rewardsService;
     private final TripPricer tripPricer = new TripPricer();
+    private final Object attractionsCacheLock = new Object();
+    private volatile List<Attraction> attractionsCache = List.of();
+    private volatile long attractionsCacheExpiresAt = 0L;
     // Database connection will be used for external users, but for testing purposes
     // internal users are provided and stored in memory
     private final Map<String, User> internalUserMap = new HashMap<>();
     boolean testMode = true;
+    private final ExecutorService locationTrackingExecutor = Executors.newFixedThreadPool(
+            Math.max(4, Runtime.getRuntime().availableProcessors() * 2)
+    );
 
 
     public TourGuideService(GpsUtil gpsUtil, RewardsService rewardsService) {
@@ -79,14 +85,24 @@ public class TourGuideService {
         }
     }
 
+
     public List<Provider> getTripDeals(User user) {
-        int cumulatativeRewardPoints = user.getUserRewards().stream().mapToInt(UserReward::getRewardPoints).sum();
+        int cumulativeRewardPoints = user.getUserRewards().stream().mapToInt(UserReward::getRewardPoints).sum();
         List<Provider> providers = tripPricer.getPrice(tripPricerApiKey, user.getUserId(),
                 user.getUserPreferences().getNumberOfAdults(), user.getUserPreferences().getNumberOfChildren(),
-                user.getUserPreferences().getTripDuration(), cumulatativeRewardPoints);
+                user.getUserPreferences().getTripDuration(), cumulativeRewardPoints);
         user.setTripDeals(providers);
         return providers;
     }
+
+    public CompletableFuture<VisitedLocation> trackUserLocationAsync(User user) {
+        return CompletableFuture.supplyAsync(() -> trackUserLocation(user), locationTrackingExecutor)
+                .exceptionally(ex -> {
+                    log.error("Unable to track location asynchronously for user {}", user.getUserId(), ex);
+                    throw new CompletionException(ex);
+                });
+    }
+
 
     public VisitedLocation trackUserLocation(User user) {
         VisitedLocation visitedLocation = gpsUtil.getUserLocation(user.getUserId());
@@ -95,12 +111,10 @@ public class TourGuideService {
         return visitedLocation;
     }
 
-    //Changed method to return a list of NearbyAttractionDTO instead of a list of Attraction, and added distance and reward points to the DTO
-    // The method now sorts the attractions by distance to the user's location and limits the results to the 5 closest attractions
-    //Moved the logic here from the RewardsService to calculate the distance and reward points for each attraction and add them to the DTO
+
     public List<NearbyAttractionDTO> getNearByAttractions(VisitedLocation visitedLocation) {
         List<NearbyAttractionDTO> nearbyAttractions = new ArrayList<>();
-        List<Attraction> attractions = gpsUtil.getAttractions().stream().sorted((a1, a2) -> Double.compare(rewardsService.getDistance(visitedLocation.location, a1),
+        List<Attraction> attractions = getCachedAttractions().stream().sorted((a1, a2) -> Double.compare(rewardsService.getDistance(visitedLocation.location, a1),
                         rewardsService.getDistance(visitedLocation.location, a2)))
                 .limit(5)
                 .toList();
@@ -114,10 +128,30 @@ public class TourGuideService {
         return nearbyAttractions;
     }
 
+
+    private List<Attraction> getCachedAttractions() {
+        long now = System.currentTimeMillis();
+        List<Attraction> snapshot = attractionsCache;
+        if (!snapshot.isEmpty() && now < attractionsCacheExpiresAt) {
+            return snapshot;
+        }
+
+        synchronized (attractionsCacheLock) {
+            now = System.currentTimeMillis();
+            if (attractionsCache.isEmpty() || now >= attractionsCacheExpiresAt) {
+                attractionsCache = List.copyOf(Objects.requireNonNull(gpsUtil.getAttractions()));
+                attractionsCacheExpiresAt = now + ATTRACTIONS_CACHE_TTL_MILLIS;
+            }
+            return attractionsCache;
+        }
+    }
+
     private void addShutDownHook() {
         Runtime.getRuntime().addShutdownHook(new Thread() {
             public void run() {
                 tracker.stopTracking();
+                locationTrackingExecutor.shutdownNow();
+                rewardsService.shutdown();
             }
         });
     }
