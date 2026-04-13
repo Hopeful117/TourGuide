@@ -2,5 +2,8 @@
 <project version="4">
   <component name="VcsDirectoryMappings">
     <mapping directory="" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../JavaDA_PROJECT7_RESTAPI" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../Pay_My_Buddy" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../ScaleUpYourCodeWithJavaConcurrencyA" vcs="Git" />
   </component>
 </project>
