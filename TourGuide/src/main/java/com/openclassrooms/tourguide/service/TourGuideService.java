@@ -24,11 +24,6 @@ import java.util.stream.IntStream;
 @Service
 @Slf4j
 public class TourGuideService {
-    /**********************************************************************************
-     *
-     * Methods Below: For Internal Testing
-     *
-     **********************************************************************************/
     private static final String tripPricerApiKey = "test-server-api-key";
     private static final long ATTRACTIONS_CACHE_TTL_MILLIS = 60_000;
     public final Tracker tracker;
@@ -38,8 +33,7 @@ public class TourGuideService {
     private final ReentrantLock attractionsCacheLock = new ReentrantLock();
     private volatile List<Attraction> attractionsCache = List.of();
     private volatile long attractionsCacheExpiresAt = 0L;
-    // Database connection will be used for external users, but for testing purposes
-    // internal users are provided and stored in memory
+    // In test mode, users are kept in-memory.
     private final Map<String, User> internalUserMap = new HashMap<>();
     boolean testMode = true;
     private final ExecutorService locationTrackingExecutor = Executors.newFixedThreadPool(
@@ -96,9 +90,9 @@ public class TourGuideService {
         user.setTripDeals(providers);
         return providers;
     }
-    // This method allows to track user location asynchronously, which can improve performance when tracking multiple users at the same time.
-    // It uses a CompletableFuture to run the tracking logic in a separate thread,
-    // and it handles any exceptions that may occur during the tracking process.
+    /**
+     * Tracks one user location asynchronously on the dedicated location executor.
+     */
     public CompletableFuture<VisitedLocation> trackUserLocationAsync(User user) {
         return CompletableFuture.supplyAsync(() -> trackUserLocation(user), locationTrackingExecutor)
                 .exceptionally(ex -> {
@@ -107,15 +101,19 @@ public class TourGuideService {
                 });
     }
 
-    // This method tracks the user's location synchronously, which is useful for tracking a single user or when the tracking needs to be done in a specific order.
+    /**
+     * Tracks one user synchronously and computes rewards for the new visited location.
+     */
     public VisitedLocation trackUserLocation(User user) {
         VisitedLocation visitedLocation = gpsUtil.getUserLocation(user.getUserId());
         user.addToVisitedLocations(visitedLocation);
         rewardsService.calculateRewards(user);
         return visitedLocation;
     }
-    // This method tracks the location of all users concurrently using CompletableFuture,
-    // and waits for all tracking operations to complete before returning.
+
+    /**
+     * Tracks all users concurrently and returns only when all location updates are complete.
+     */
     public void trackAllUsers(List<User> users) {
         List<CompletableFuture<VisitedLocation>> futures = new ArrayList<>();
         for (User user : users) {
@@ -124,11 +122,13 @@ public class TourGuideService {
         CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
     }
 
-    // This method retrieves the nearby attractions for a given visited location, and it uses the rewards service to calculate the distance and reward points for each attraction.
+    /**
+     * Returns the 5 closest attractions for a visited location with computed distance and points.
+     */
     public List<NearbyAttractionDTO> getNearByAttractions(VisitedLocation visitedLocation) {
         List<NearbyAttractionDTO> nearbyAttractions = new ArrayList<>();
 
-        // Using the cached attractions list to improve performance, and sorting the attractions by distance to the visited location before limiting the results to the 5 closest attractions.
+        // Sort all attractions by distance and keep only the five nearest.
         List<Attraction> attractions = getCachedAttractions().stream().sorted((a1, a2) -> Double.compare(rewardsService.getDistance(visitedLocation.location, a1),
                         rewardsService.getDistance(visitedLocation.location, a2)))
                 .limit(5)
@@ -143,7 +143,9 @@ public class TourGuideService {
         return nearbyAttractions;
     }
 
-    // This method retrieves the list of attractions from the cache if it is still valid, or it fetches the attractions from the GPS utility and updates the cache if it has expired.
+    /**
+     * Returns cached attractions and refreshes the cache when TTL has expired.
+     */
     private List<Attraction> getCachedAttractions() {
         long now = System.currentTimeMillis();
         List<Attraction> snapshot = attractionsCache;

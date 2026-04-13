@@ -18,14 +18,12 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
-import static com.google.common.collect.Lists.partition;
-
 @Service
 public class RewardsService {
     private static final double STATUTE_MILES_PER_NAUTICAL_MILE = 1.15077945;
     private static final long ATTRACTIONS_CACHE_TTL_MILLIS = 60_000;
 
-    // proximity in miles
+    // Proximity buffer in miles.
     private final int defaultProximityBuffer = 10;
     private final GpsUtil gpsUtil;
     private final RewardCentral rewardsCentral;
@@ -50,14 +48,21 @@ public class RewardsService {
         proximityBuffer = defaultProximityBuffer;
     }
 
-
-
+    /**
+     * Calculates and appends missing rewards for a user.
+     *
+     * <p>The method takes a snapshot of visited locations and already rewarded attractions under a
+     * per-user lock, computes new rewards outside the lock, then appends results under the same lock.
+     * This keeps critical sections short while preventing duplicate reward insertion races.
+     *
+     * @param user user to evaluate
+     */
     public void calculateRewards(User user) {
         ReentrantLock userLock = getUserLock(user.getUserId());
         List<VisitedLocation> userLocations;
         Set<String> rewardedAttractions;
 
-        // Snapshot atomique de l'etat utilisateur pour eviter les races.
+        // Snapshot user state under lock to avoid concurrent mutation during evaluation.
         userLock.lock();
         try {
             userLocations = new ArrayList<>(user.getVisitedLocations());
@@ -77,7 +82,6 @@ public class RewardsService {
         Set<String> attractionNamesToReward = ConcurrentHashMap.newKeySet();
         attractionNamesToReward.addAll(rewardedAttractions);
 
-
         userLocations.forEach(visitedLocation -> {
             for (Attraction attraction : attractions) {
                 if (nearAttraction(visitedLocation, attraction)
@@ -87,7 +91,8 @@ public class RewardsService {
                 }
             }
         });
-        // Synchronize on the user object to safely add new rewards to the user's rewards list without risking concurrent modification issues.
+
+        // Apply computed rewards atomically for this user.
         userLock.lock();
         try {
             newRewards.forEach(user::addUserReward);
@@ -95,11 +100,12 @@ public class RewardsService {
             userLock.unlock();
         }
     }
-    // This method allows for asynchronous reward calculation, which can improve performance when processing rewards for multiple users concurrently.
 
-
-    // This method calculates rewards for a list of users concurrently using CompletableFuture,
-    // and waits for all calculations to complete before returning.
+    /**
+     * Calculates rewards for all users in parallel and blocks until all computations complete.
+     *
+     * @param users users to process
+     */
     public void CalculateRewardsForAllUsers(List<User> users) {
         List<CompletableFuture<Void>> futures = users.stream()
                 .map(user -> CompletableFuture.runAsync(
@@ -107,10 +113,7 @@ public class RewardsService {
                 .toList();
 
         CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
-
-
     }
-
 
     public void shutdown() {
         rewardsExecutor.shutdownNow();
@@ -129,6 +132,9 @@ public class RewardsService {
         return rewardsCentral.getAttractionRewardPoints(attraction.attractionId, user);
     }
 
+    /**
+     * Returns attractions from in-memory cache, refreshing from GpsUtil when cache has expired.
+     */
     private List<Attraction> getCachedAttractions() {
         long now = System.currentTimeMillis();
         List<Attraction> snapshot = attractionsCache;
@@ -153,8 +159,9 @@ public class RewardsService {
         return userLocks.computeIfAbsent(userId, ignored -> new ReentrantLock());
     }
 
-
-
+    /**
+     * Computes great-circle distance between two coordinates in statute miles.
+     */
     public double getDistance(Location loc1, Location loc2) {
         double lat1 = Math.toRadians(loc1.latitude);
         double lon1 = Math.toRadians(loc1.longitude);
