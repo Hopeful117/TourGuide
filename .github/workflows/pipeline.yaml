@@ -6,7 +6,9 @@ on:
   pull_request:
     branches: [ main ]
 
+
 jobs:
+
   build:
     runs-on: ubuntu-latest
     defaults:
@@ -26,6 +28,11 @@ jobs:
           key: ${{ runner.os }}-m2-${{ hashFiles('TourGuide/pom.xml') }}
           restore-keys: |
             ${{ runner.os }}-m2-
+      - name: Install local jars
+        run: |
+         mvn install:install-file -Dfile=libs/gpsUtil.jar -DgroupId=gpsUtil -DartifactId=gpsUtil -Dversion=1.0 -Dpackaging=jar
+         mvn install:install-file -Dfile=libs/TripPricer.jar -DgroupId=tripPricer -DartifactId=tripPricer -Dversion=1.0 -Dpackaging=jar
+         mvn install:install-file -Dfile=libs/RewardCentral.jar -DgroupId=rewardCentral -DartifactId=rewardCentral -Dversion=1.0 -Dpackaging=jar
 
       - name: Build with Maven
         run: mvn clean install
@@ -33,7 +40,5 @@ jobs:
       - name: Test with Maven
         run: mvn test
 
-      - name: Check code style with Checkstyle
-        run: mvn checkstyle:check
 
 

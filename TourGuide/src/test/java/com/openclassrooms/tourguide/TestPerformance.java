@@ -48,7 +48,7 @@ public class TestPerformance {
 
 
     @Test
-    @Disabled("Disabled to improve the CI pipeline performance. Enable and adjust user count for local testing.")
+
     public void highVolumeTrackLocation() {
         GpsUtil gpsUtil = new GpsUtil();
         RewardsService rewardsService = new RewardsService(gpsUtil, new RewardCentral());
@@ -76,7 +76,7 @@ public class TestPerformance {
 
 
     @Test
-    @Disabled("Disabled to improve the CI pipeline performance. Enable and adjust user count for local testing.")
+
     public void highVolumeGetRewards() {
         GpsUtil gpsUtil = new GpsUtil();
         RewardsService rewardsService = new RewardsService(gpsUtil, new RewardCentral());
