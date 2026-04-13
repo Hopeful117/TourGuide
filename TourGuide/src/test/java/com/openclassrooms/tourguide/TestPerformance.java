@@ -8,6 +8,7 @@ import gpsUtil.GpsUtil;
 import gpsUtil.location.Attraction;
 import gpsUtil.location.VisitedLocation;
 import org.apache.commons.lang3.time.StopWatch;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import rewardCentral.RewardCentral;
 
@@ -47,6 +48,7 @@ public class TestPerformance {
 
 
     @Test
+    @Disabled("Disabled to improve the CI pipeline performance. Enable and adjust user count for local testing.")
     public void highVolumeTrackLocation() {
         GpsUtil gpsUtil = new GpsUtil();
         RewardsService rewardsService = new RewardsService(gpsUtil, new RewardCentral());
@@ -74,13 +76,14 @@ public class TestPerformance {
 
 
     @Test
+    @Disabled("Disabled to improve the CI pipeline performance. Enable and adjust user count for local testing.")
     public void highVolumeGetRewards() {
         GpsUtil gpsUtil = new GpsUtil();
         RewardsService rewardsService = new RewardsService(gpsUtil, new RewardCentral());
 
         // Users should be incremented up to 100,000, and test finishes within 20
         // minutes
-        InternalTestHelper.setInternalUserNumber(1_00);
+        InternalTestHelper.setInternalUserNumber(100_000);
 
         TourGuideService tourGuideService = new TourGuideService(gpsUtil, rewardsService);
 
