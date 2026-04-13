@@ -40,7 +40,7 @@ public class User {
 // This can be fixed by changing the condition to check if there is already a reward for the attraction, and if so, it should not add a new reward to the user's rewards list.
     public void addUserReward(UserReward userReward) {
         // if (userRewards.stream().filter(r -> !r.attraction.attractionName.equals(userReward.attraction)).count() == 0) {
-        if (userRewards.stream().filter(reward -> reward.attraction.attractionName.equals(userReward.attraction.attractionName)).count() == 0) {
+        if (userRewards.stream().noneMatch(reward -> reward.attraction.attractionName.equals(userReward.attraction.attractionName))) {
             userRewards.add(userReward);
         }
     }

@@ -18,6 +18,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.IntStream;
 
 @Service
@@ -34,7 +35,7 @@ public class TourGuideService {
     private final GpsUtil gpsUtil;
     private final RewardsService rewardsService;
     private final TripPricer tripPricer = new TripPricer();
-    private final Object attractionsCacheLock = new Object();
+    private final ReentrantLock attractionsCacheLock = new ReentrantLock();
     private volatile List<Attraction> attractionsCache = List.of();
     private volatile long attractionsCacheExpiresAt = 0L;
     // Database connection will be used for external users, but for testing purposes
@@ -66,6 +67,7 @@ public class TourGuideService {
         return user.getUserRewards();
     }
 
+
     public VisitedLocation getUserLocation(User user) {
         return (!user.getVisitedLocations().isEmpty()) ? user.getLastVisitedLocation()
                 : trackUserLocation(user);
@@ -94,7 +96,9 @@ public class TourGuideService {
         user.setTripDeals(providers);
         return providers;
     }
-
+    // This method allows to track user location asynchronously, which can improve performance when tracking multiple users at the same time.
+    // It uses a CompletableFuture to run the tracking logic in a separate thread,
+    // and it handles any exceptions that may occur during the tracking process.
     public CompletableFuture<VisitedLocation> trackUserLocationAsync(User user) {
         return CompletableFuture.supplyAsync(() -> trackUserLocation(user), locationTrackingExecutor)
                 .exceptionally(ex -> {
@@ -103,17 +107,28 @@ public class TourGuideService {
                 });
     }
 
-
+    // This method tracks the user's location synchronously, which is useful for tracking a single user or when the tracking needs to be done in a specific order.
     public VisitedLocation trackUserLocation(User user) {
         VisitedLocation visitedLocation = gpsUtil.getUserLocation(user.getUserId());
         user.addToVisitedLocations(visitedLocation);
         rewardsService.calculateRewards(user);
         return visitedLocation;
     }
+    // This method tracks the location of all users concurrently using CompletableFuture,
+    // and waits for all tracking operations to complete before returning.
+    public void trackAllUsers(List<User> users) {
+        List<CompletableFuture<VisitedLocation>> futures = new ArrayList<>();
+        for (User user : users) {
+            futures.add(trackUserLocationAsync(user));
+        }
+        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+    }
 
-
+    // This method retrieves the nearby attractions for a given visited location, and it uses the rewards service to calculate the distance and reward points for each attraction.
     public List<NearbyAttractionDTO> getNearByAttractions(VisitedLocation visitedLocation) {
         List<NearbyAttractionDTO> nearbyAttractions = new ArrayList<>();
+
+        // Using the cached attractions list to improve performance, and sorting the attractions by distance to the visited location before limiting the results to the 5 closest attractions.
         List<Attraction> attractions = getCachedAttractions().stream().sorted((a1, a2) -> Double.compare(rewardsService.getDistance(visitedLocation.location, a1),
                         rewardsService.getDistance(visitedLocation.location, a2)))
                 .limit(5)
@@ -128,7 +143,7 @@ public class TourGuideService {
         return nearbyAttractions;
     }
 
-
+    // This method retrieves the list of attractions from the cache if it is still valid, or it fetches the attractions from the GPS utility and updates the cache if it has expired.
     private List<Attraction> getCachedAttractions() {
         long now = System.currentTimeMillis();
         List<Attraction> snapshot = attractionsCache;
@@ -136,13 +151,16 @@ public class TourGuideService {
             return snapshot;
         }
 
-        synchronized (attractionsCacheLock) {
+        attractionsCacheLock.lock();
+        try {
             now = System.currentTimeMillis();
             if (attractionsCache.isEmpty() || now >= attractionsCacheExpiresAt) {
                 attractionsCache = List.copyOf(Objects.requireNonNull(gpsUtil.getAttractions()));
                 attractionsCacheExpiresAt = now + ATTRACTIONS_CACHE_TTL_MILLIS;
             }
             return attractionsCache;
+        } finally {
+            attractionsCacheLock.unlock();
         }
     }
 

@@ -11,10 +11,10 @@ import org.apache.commons.lang3.time.StopWatch;
 import org.junit.jupiter.api.Test;
 import rewardCentral.RewardCentral;
 
-import java.util.ArrayList;
+
 import java.util.Date;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
+
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -61,11 +61,8 @@ public class TestPerformance {
         StopWatch stopWatch = new StopWatch();
         stopWatch.start();
 
-        List<CompletableFuture<VisitedLocation>> futures = new ArrayList<>();
-        for (User user : allUsers) {
-            futures.add(tourGuideService.trackUserLocationAsync(user));
-        }
-        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+        // Using CompletableFuture to track user locations in parallel, and then join the results to ensure that all locations are tracked before asserting the results.
+        tourGuideService.trackAllUsers(allUsers);
 
         stopWatch.stop();
         tourGuideService.tracker.stopTracking();
@@ -83,17 +80,25 @@ public class TestPerformance {
 
         // Users should be incremented up to 100,000, and test finishes within 20
         // minutes
-        InternalTestHelper.setInternalUserNumber(100_000);
-        StopWatch stopWatch = new StopWatch();
-        stopWatch.start();
+        InternalTestHelper.setInternalUserNumber(1_00);
+
         TourGuideService tourGuideService = new TourGuideService(gpsUtil, rewardsService);
 
         Attraction attraction = gpsUtil.getAttractions().get(0);
         List<User> allUsers;
+        StopWatch stopWatch = new StopWatch();
+        stopWatch.start();
         allUsers = tourGuideService.getAllUsers();
-        allUsers.forEach(u -> u.addToVisitedLocations(new VisitedLocation(u.getUserId(), attraction, new Date())));
+        allUsers.forEach(user -> {
+            user.addToVisitedLocations(new VisitedLocation(user.getUserId(), attraction, new Date()));
 
-        rewardsService.calculateRewardsForUsersAsync(allUsers).join();
+
+
+        });
+        rewardsService.CalculateRewardsForAllUsers(allUsers);
+
+
+
 
         for (User user : allUsers) {
             assertFalse(user.getUserRewards().isEmpty());

@@ -12,9 +12,13 @@ import rewardCentral.RewardCentral;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
+
+import static com.google.common.collect.Lists.partition;
 
 @Service
 public class RewardsService {
@@ -25,14 +29,16 @@ public class RewardsService {
     private final int defaultProximityBuffer = 10;
     private final GpsUtil gpsUtil;
     private final RewardCentral rewardsCentral;
-    private final Object attractionsCacheLock = new Object();
+    private final ReentrantLock attractionsCacheLock = new ReentrantLock();
+    private final Map<UUID, ReentrantLock> userLocks = new ConcurrentHashMap<>();
     private volatile List<Attraction> attractionsCache = List.of();
     private volatile long attractionsCacheExpiresAt = 0L;
+
     @Setter
     private int proximityBuffer = defaultProximityBuffer;
 
-    private final ExecutorService rewardsExecutor = Executors.newFixedThreadPool(
-            Math.max(4, Runtime.getRuntime().availableProcessors() * 2)
+    final ExecutorService rewardsExecutor = Executors.newFixedThreadPool(
+            Math.max(4, Runtime.getRuntime().availableProcessors() * 6)
     );
 
     public RewardsService(GpsUtil gpsUtil, RewardCentral rewardCentral) {
@@ -43,22 +49,23 @@ public class RewardsService {
     public void setDefaultProximityBuffer() {
         proximityBuffer = defaultProximityBuffer;
     }
-    //This method is called when a user gets a new location, and it checks if the user is near any attractions. If the user is near an attraction and has not already received a reward for that attraction, it adds a new reward to the user's rewards list.
-    //Using Snapshot of User's visited locations and attractions to avoid ConcurrentModificationException, and using a Set to track rewarded attractions for efficient lookups.
-    //The reward points are not being added to the user's rewards list because the getRewardPoints method is not being called correctly in the calculateRewards method.
-    //Fixed by changing the condition in User's addUserReward method to check if there is already a reward for the attraction, and if so, it should not add a new reward to the user's rewards list.
+
 
 
     public void calculateRewards(User user) {
+        ReentrantLock userLock = getUserLock(user.getUserId());
         List<VisitedLocation> userLocations;
         Set<String> rewardedAttractions;
 
         // Snapshot atomique de l'etat utilisateur pour eviter les races.
-        synchronized (user) {
+        userLock.lock();
+        try {
             userLocations = new ArrayList<>(user.getVisitedLocations());
             rewardedAttractions = user.getUserRewards().stream()
                     .map(reward -> reward.attraction.attractionName)
                     .collect(Collectors.toSet());
+        } finally {
+            userLock.unlock();
         }
 
         if (userLocations.isEmpty()) {
@@ -67,34 +74,43 @@ public class RewardsService {
 
         List<Attraction> attractions = getCachedAttractions();
         List<UserReward> newRewards = new ArrayList<>();
-        Set<String> attractionNamesToReward = new HashSet<>(rewardedAttractions);
+        Set<String> attractionNamesToReward = ConcurrentHashMap.newKeySet();
+        attractionNamesToReward.addAll(rewardedAttractions);
 
 
-        userLocations.parallelStream().filter(visitedLocation -> attractions.parallelStream().anyMatch(attraction ->
-                !attractionNamesToReward.contains(attraction.attractionName) && nearAttraction(visitedLocation, attraction)))
-                .forEach(visitedLocation -> attractions.parallelStream().filter(attraction ->
-                        !attractionNamesToReward.contains(attraction.attractionName) && nearAttraction(visitedLocation, attraction))
-                        .forEach(attraction -> {
-                            int points = getRewardPoints(attraction, user.getUserId());
-                            newRewards.add(new UserReward(visitedLocation, attraction, points));
-                            attractionNamesToReward.add(attraction.attractionName);
-                        }));
-
-        synchronized (user) {
+        userLocations.forEach(visitedLocation -> {
+            for (Attraction attraction : attractions) {
+                if (nearAttraction(visitedLocation, attraction)
+                        && attractionNamesToReward.add(attraction.attractionName)) {
+                    int points = getRewardPoints(attraction, user.getUserId());
+                    newRewards.add(new UserReward(visitedLocation, attraction, points));
+                }
+            }
+        });
+        // Synchronize on the user object to safely add new rewards to the user's rewards list without risking concurrent modification issues.
+        userLock.lock();
+        try {
             newRewards.forEach(user::addUserReward);
+        } finally {
+            userLock.unlock();
         }
     }
+    // This method allows for asynchronous reward calculation, which can improve performance when processing rewards for multiple users concurrently.
 
-    public CompletableFuture<Void> calculateRewardsAsync(User user) {
-        return CompletableFuture.runAsync(() -> calculateRewards(user), rewardsExecutor);
-    }
 
-    public CompletableFuture<Void> calculateRewardsForUsersAsync(List<User> users) {
+    // This method calculates rewards for a list of users concurrently using CompletableFuture,
+    // and waits for all calculations to complete before returning.
+    public void CalculateRewardsForAllUsers(List<User> users) {
         List<CompletableFuture<Void>> futures = users.stream()
-                .map(this::calculateRewardsAsync)
+                .map(user -> CompletableFuture.runAsync(
+                        () -> calculateRewards(user), rewardsExecutor))
                 .toList();
-        return CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
+
+        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+
+
     }
+
 
     public void shutdown() {
         rewardsExecutor.shutdownNow();
@@ -120,15 +136,24 @@ public class RewardsService {
             return snapshot;
         }
 
-        synchronized (attractionsCacheLock) {
+        attractionsCacheLock.lock();
+        try {
             now = System.currentTimeMillis();
             if (attractionsCache.isEmpty() || now >= attractionsCacheExpiresAt) {
                 attractionsCache = List.copyOf(Objects.requireNonNull(gpsUtil.getAttractions()));
                 attractionsCacheExpiresAt = now + ATTRACTIONS_CACHE_TTL_MILLIS;
             }
             return attractionsCache;
+        } finally {
+            attractionsCacheLock.unlock();
         }
     }
+
+    private ReentrantLock getUserLock(UUID userId) {
+        return userLocks.computeIfAbsent(userId, ignored -> new ReentrantLock());
+    }
+
+
 
     public double getDistance(Location loc1, Location loc2) {
         double lat1 = Math.toRadians(loc1.latitude);

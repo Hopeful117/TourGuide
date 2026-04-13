@@ -5,6 +5,7 @@ com/openclassrooms/tourguide/TourGuideController.class
 com/openclassrooms/tourguide/user/UserPreferences.class
 com/openclassrooms/tourguide/service/TourGuideService$1.class
 com/openclassrooms/tourguide/service/RewardsService.class
+com/openclassrooms/tourguide/service/RewardsService$RewardCandidate.class
 com/openclassrooms/tourguide/TourGuideModule.class
 com/openclassrooms/tourguide/dto/NearbyAttractionDTO.class
 com/openclassrooms/tourguide/TourguideApplication.class
