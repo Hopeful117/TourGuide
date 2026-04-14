@@ -20,9 +20,11 @@ mvn install:install-file -Dfile=libs/TripPricer.jar -DgroupId=tripPricer -Dartif
 >  - Set up JDK 17
 >  - Build the project using Maven
 >  - Run tests using Maven
+>  - The perfomances are disabled to avoid failing due to slower execution time on GitHub Actions, but they can be enabled by removing the `-Dperfomances=false` flag from the `mvn test` command in the workflow file.
 
 # Performance Optimization
 To scale up the application and handle a large number of users,we used the following strategies:
 - Caching: We implemented caching for frequently accessed data, such as user preferences and attraction information, to reduce the number of database calls and improve response times.
 - Asynchronous Processing: We used asynchronous processing for tasks that do not require immediate responses, such as sending notifications and updating user rewards, to free up resources and improve overall performance.
 - Load Balancing: We configured load balancing to distribute incoming requests across multiple instances of the application, ensuring that no single instance is overwhelmed and improving the application's ability to handle a large number of users.
+
