@@ -48,7 +48,7 @@ public class TestPerformance {
 
 
     @Test
-
+    // disabled to avoid failure during pipeline execution as it makes the test fail due to github actions performance limitations, but can be enabled for local testing and performance validation
     @Disabled
     public void highVolumeTrackLocation() {
         GpsUtil gpsUtil = new GpsUtil();
@@ -77,6 +77,7 @@ public class TestPerformance {
 
 
     @Test
+    // disabled to avoid failure during pipeline execution as it makes the test fail due to github actions performance limitations, but can be enabled for local testing and performance validation
     @Disabled
     public void highVolumeGetRewards() {
         GpsUtil gpsUtil = new GpsUtil();
@@ -93,15 +94,8 @@ public class TestPerformance {
         StopWatch stopWatch = new StopWatch();
         stopWatch.start();
         allUsers = tourGuideService.getAllUsers();
-        allUsers.forEach(user -> {
-            user.addToVisitedLocations(new VisitedLocation(user.getUserId(), attraction, new Date()));
-
-
-
-        });
+        allUsers.forEach(user -> user.addToVisitedLocations(new VisitedLocation(user.getUserId(), attraction, new Date())));
         rewardsService.CalculateRewardsForAllUsers(allUsers);
-
-
 
 
         for (User user : allUsers) {

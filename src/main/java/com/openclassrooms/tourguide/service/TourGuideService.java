@@ -36,9 +36,13 @@ public class TourGuideService {
     // In test mode, users are kept in-memory.
     private final Map<String, User> internalUserMap = new HashMap<>();
     boolean testMode = true;
-    private final ExecutorService locationTrackingExecutor = Executors.newFixedThreadPool(
+
+
+     private final ExecutorService locationTrackingExecutor = Executors.newFixedThreadPool(
             Math.max(4, Runtime.getRuntime().availableProcessors() * 2)
     );
+
+
 
 
     public TourGuideService(GpsUtil gpsUtil, RewardsService rewardsService) {
@@ -90,16 +94,7 @@ public class TourGuideService {
         user.setTripDeals(providers);
         return providers;
     }
-    /**
-     * Tracks one user location asynchronously on the dedicated location executor.
-     */
-    public CompletableFuture<VisitedLocation> trackUserLocationAsync(User user) {
-        return CompletableFuture.supplyAsync(() -> trackUserLocation(user), locationTrackingExecutor)
-                .exceptionally(ex -> {
-                    log.error("Unable to track location asynchronously for user {}", user.getUserId(), ex);
-                    throw new CompletionException(ex);
-                });
-    }
+
 
     /**
      * Tracks one user synchronously and computes rewards for the new visited location.
@@ -115,10 +110,10 @@ public class TourGuideService {
      * Tracks all users concurrently and returns only when all location updates are complete.
      */
     public void trackAllUsers(List<User> users) {
-        List<CompletableFuture<VisitedLocation>> futures = new ArrayList<>();
-        for (User user : users) {
-            futures.add(trackUserLocationAsync(user));
-        }
+        List<CompletableFuture<VisitedLocation>> futures = users.stream()
+                .map(user -> CompletableFuture.supplyAsync(() -> trackUserLocation(user), locationTrackingExecutor))
+                .toList();
+
         CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
     }
 
