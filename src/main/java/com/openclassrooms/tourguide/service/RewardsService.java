@@ -11,10 +11,7 @@ import org.springframework.stereotype.Service;
 import rewardCentral.RewardCentral;
 
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.*;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
@@ -35,11 +32,16 @@ public class RewardsService {
     @Setter
     private int proximityBuffer = defaultProximityBuffer;
 
-    final ExecutorService rewardsExecutor = Executors.newFixedThreadPool(
+
+
+   final static ExecutorService rewardsExecutor =  Executors.newFixedThreadPool(
             Math.max(4, Runtime.getRuntime().availableProcessors() * 6)
     );
 
+
+
     public RewardsService(GpsUtil gpsUtil, RewardCentral rewardCentral) {
+
         this.gpsUtil = gpsUtil;
         this.rewardsCentral = rewardCentral;
     }

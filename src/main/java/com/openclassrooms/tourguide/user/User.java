@@ -4,10 +4,8 @@ import gpsUtil.location.VisitedLocation;
 import lombok.Data;
 import tripPricer.Provider;
 
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
+
 @Data
 public class User {
     private final UUID userId;
